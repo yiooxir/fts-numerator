@@ -2,6 +2,7 @@
  * Created by sergey on 28.03.15.
  */
 
+var async = require('async');
 
 module.exports = {
     _reStructure: function(objects) {
@@ -16,30 +17,46 @@ module.exports = {
         return res;
     },
 
-    _validate: function(objects) {
-        _.each(objects, function(e) {
-            if (!_.has(e, 'sysNumber')) {
-                e.sysNumber = 0;
-            }
-        });
-        return objects;
-    },
-
-
     toHash: function(objects) {
-        objects = this._validate(objects);
+        /* order by date */
         objects = _.sortBy(objects, function(e) {return e.created});
+        /* group by firm */
         var res = _.groupBy(objects, function(e) {return e.firm});
+        /* create new structure */
         res = this._reStructure(res);
 
         return res;
     },
 
     excludeNumerable: function(objects) {
-        _.each(objects, function(e, i) {
-            if (e.sysNumber) objects.splice(i, 1);
-        });
+        return _.filter(objects, function(e) {return !e.sysNumber});
+    },
 
-        return objects;
+    update: function(counts, next, db, callback) {
+
+        var i = 0,
+            len = counts.length,
+            collection = db.collection('counts');
+
+        if (!len) return callback(null, counts);
+
+        async.whilst(
+            function() {
+                return i < len;
+            },
+            function(cb) {
+                collection.updateOne(
+                    {_id: counts[i]._id},
+                    {$set: {sysNumber: next+i}},
+                    function(err) {
+                        if(err) cb(err);
+                        cb(null, i++);
+                    })
+            },
+            function(err) {
+                if (err) callback(err);
+                callback(null, counts);
+            }
+        )
     }
 };

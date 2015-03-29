@@ -31,27 +31,50 @@ MongoClient.connect('mongodb://127.0.0.1:27017/fts', function(err, db) {
 
             _.each(firms, function(f) {f._id= f._id.toString()});
 
+            function getStartNum(firmId) {
+                return _.findWhere(firms, {_id: firmId}).startNum;
+            }
             _.each(hash, function(e) {
 
-                var firm = _.findWhere(firms, {_id: e.firm});
-                if (!firm) throw Error('firm not found');
-
                 var maxNum = _.max(e.counts, function(f) {return f.sysNumber}).sysNumber;
-                e.next = maxNum ? maxNum + 1 : firm.startNum;
+                e.next = maxNum ? maxNum + 1 : getStartNum(e.firm) || 1;
 
             });
 
             _.each(hash, function(e) {
-                utils.excludeNumerable(e.counts);
+                e.counts = utils.excludeNumerable(e.counts);
             });
 
             callback(null, hash);
         },
-        function() {
 
+        function(hash, callback) {
+
+            var i = 0,
+                len = hash.length;
+
+            if (!len) return callback(null, hash);
+
+            async.whilst(
+                function() {
+                    return i < len;
+                },
+                function(cb) {
+                    utils.update(hash[i].counts, hash[i].next, db, function(err) {
+                        if (err) return cb(err);
+                        cb(null, i++);
+                    });
+                },
+
+                function(err) {
+                    if (err) return callback(err);
+                    callback(null, hash);
+                }
+            )
         }
-    ], function(err, res) {
-        console.log('>>',res);
+
+    ], function(err) {
+        console.log('END');
         db.close();
     });
 
